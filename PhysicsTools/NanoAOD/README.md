@@ -13,6 +13,10 @@
 
     git clone --branch fitWC_oldMiniAOD https://github.com/GonzalezFJR/cmssw.git
 
+and push to remote with:
+
+    git push https://github.com/GonzalezFJR/cmssw.git HEAD:fitWC_oldMiniAOD
+
 ### Or install nanoAOD-tools only
 
     cmsrel CMSSW_9_4_6_patch1
