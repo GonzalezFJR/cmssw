@@ -16,6 +16,7 @@
 
 #include "PhysicsTools/NanoAOD/interface/WCPoint.h"
 #include "PhysicsTools/NanoAOD/interface/WCFit.h"
+#include "PhysicsTools/NanoAOD/interface/ConvertHex.h"
 
 #include <vector>
 #include <unordered_map>
@@ -177,6 +178,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
             produces<nanoaod::FlatTable>("LHEScale");
             produces<nanoaod::FlatTable>("LHEPdf");
             produces<nanoaod::FlatTable>("LHEEFT");
+            produces<nanoaod::FlatTable>("WCnames");
             produces<nanoaod::FlatTable>("LHEReweighting");
             produces<nanoaod::FlatTable>("LHENamed");
             produces<nanoaod::FlatTable>("PS");
@@ -215,7 +217,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
 	    iEvent.put(std::move(outM),"genModel");
 
             // tables for LHE weights, may not be filled
-            std::unique_ptr<nanoaod::FlatTable> lheScaleTab, lhePdfTab, lheRwgtTab, lheNamedTab, lheEFTTab;
+            std::unique_ptr<nanoaod::FlatTable> lheScaleTab, lhePdfTab, lheRwgtTab, lheNamedTab, lheEFTTab, wcnamesTab;
             std::unique_ptr<nanoaod::FlatTable> genPSTab;
 
             edm::Handle<LHEEventProduct> lheInfo;
@@ -229,7 +231,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
                 // get the dynamic choice of weights
                 const DynamicWeightChoice * weightChoice = runCache(iEvent.getRun().index());
                 // go fill tables
-                fillLHEWeightTables(counter, weightChoice, weight, *lheInfo, *genInfo, lheScaleTab, lhePdfTab, lheEFTTab, lheRwgtTab, lheNamedTab, genPSTab);
+                fillLHEWeightTables(counter, weightChoice, weight, *lheInfo, *genInfo, lheScaleTab, lhePdfTab, lheEFTTab, wcnamesTab, lheRwgtTab, lheNamedTab, genPSTab);
                 //fillLHEWeightTables(counter, weightChoice, weight, *lheInfo, *genInfo, lheScaleTab, lhePdfTab, lheEFTTab, lheRwgtTab, lheNamedTab, genPSTab);
                 //fillLHEWeightTables(counter, weightChoice, weight, *lheInfo, *genInfo, lheScaleTab, lhePdfTab, lheRwgtTab, lheNamedTab, genPSTab);
             } else {
@@ -239,6 +241,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
                 lheScaleTab.reset(new nanoaod::FlatTable(1, "LHEScaleWeights", true));
                 lhePdfTab.reset(new nanoaod::FlatTable(1, "LHEPdfWeights", true));
                 lheEFTTab.reset(new nanoaod::FlatTable(1, "LHEEFTWeights", true));
+                wcnamesTab.reset(new nanoaod::FlatTable(1, "WCNames", true));
                 lheRwgtTab.reset(new nanoaod::FlatTable(1, "LHEReweightingWeights", true));
                 lheNamedTab.reset(new nanoaod::FlatTable(1, "LHENamedWeights", true));
                 if (!hasIssuedWarning_.exchange(true)) {
@@ -249,6 +252,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
             iEvent.put(std::move(lheScaleTab), "LHEScale");
             iEvent.put(std::move(lhePdfTab), "LHEPdf");
             iEvent.put(std::move(lheEFTTab), "LHEEFT");
+            iEvent.put(std::move(wcnamesTab), "WCnames");
             iEvent.put(std::move(lheRwgtTab), "LHEReweighting");
             iEvent.put(std::move(lheNamedTab), "LHENamed");
             iEvent.put(std::move(genPSTab), "PS");
@@ -263,6 +267,7 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
                 std::unique_ptr<nanoaod::FlatTable> & outScale, 
                 std::unique_ptr<nanoaod::FlatTable> & outPdf,
                 std::unique_ptr<nanoaod::FlatTable> & outEFT,
+                std::unique_ptr<nanoaod::FlatTable> & outWCnam,
                 std::unique_ptr<nanoaod::FlatTable> & outRwgt,
                 std::unique_ptr<nanoaod::FlatTable> & outNamed,
                 std::unique_ptr<nanoaod::FlatTable> & outPS ) const
@@ -280,8 +285,10 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
            int nEFT = 0;
            std::vector<WCPoint> vwc;
            WCFit wcfit;
+           std::string s_wcnames;
            for (auto & weight : lheProd.weights()){
              if (weight.id.rfind("EFTrwgt",0)==0){
+               s_wcnames = (weight.id);
                nEFT++;
                WCPoint wc = WCPoint(weight.id, weight.wgt);
                vwc.push_back(wc);
@@ -290,6 +297,19 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
            wcfit = WCFit(vwc, "wcfit");
            std::vector<double> coefs = wcfit.getCoefficients();
            int nCoef = coefs.size();
+
+           std::vector<int> wcnames;
+           std::vector<std::string> wcnames_string;
+
+           std::vector<std::string> words;
+           split_string(s_wcnames,words,"_");
+           for (uint i = 1; i < words.size(); i+= 2) {
+              wcnames_string.push_back((words[i]));
+           } 
+           wcnames = VectorStringToInt(wcnames_string);
+
+           int nWC = wcnames.size();
+
            /*
            std::cout << "n coefs = " << coefs.size() << std::endl;
            std::cout << "n EFT   = " << nEFT << std::endl;
@@ -348,6 +368,10 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
             std::string EFTcoefDoc = "EFT fit coefficients";
             outEFT.reset(new nanoaod::FlatTable(nCoef, "EFTfitCoefficients", false));
             outEFT->addColumn<float>("", coefs, EFTcoefDoc, nanoaod::FlatTable::FloatColumn, lheWeightPrecision_);
+
+            std::string WCnamDoc = "EFT WC names";
+            outWCnam.reset(new nanoaod::FlatTable(nWC, "WCnames", false));
+            outWCnam->addColumn<int>("", wcnames, WCnamDoc, nanoaod::FlatTable::IntColumn, lheWeightPrecision_);
 
             outRwgt.reset(new nanoaod::FlatTable(wRwgt.size(), "LHEReweightingWeight", false));
             outRwgt->addColumn<float>("", wRwgt, weightChoice->rwgtWeightDoc, nanoaod::FlatTable::FloatColumn, lheWeightPrecision_);
@@ -582,12 +606,10 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
                             std::cout << ">>>>>>>>>>>>>>> ENTRA EN EL SEGUNDO!" << std::endl;
                             std::string groupname = groups.str(1);
                             if (groupname == "mg_reweighting") {
-                                std::cout << ">>>>>>>>>>>>>>> PASS!" << std::endl;
                                 if (lheDebug) std::cout << ">>> Looks like a LHE weights for reweighting" << std::endl;
                                 for ( ++iLine; iLine < nLines; ++iLine) {
                                     if (lheDebug) std::cout << "    " << lines[iLine];
                                     if(std::regex_search(lines[iLine], groups, rwgt)) {
-                                        std::cout << "Pasa el primero!" << std::endl;
                                         std::string rwgtID = groups.str(1);
                                         if (lheDebug) std::cout << "    >>> LHE reweighting weight: " << rwgtID << std::endl;
                                         if (std::find(lheReweighingIDs.begin(), lheReweighingIDs.end(), rwgtID) == lheReweighingIDs.end()) {
@@ -595,13 +617,11 @@ class GenWeightsTableProducer : public edm::global::EDProducer<edm::StreamCache<
                                             lheReweighingIDs.emplace_back(rwgtID);
                                         }
                                     } else if (std::regex_search(lines[iLine], endweightgroup)) {
-                                        std::cout << "Pasa el segundo!" << std::endl;
                                         if (lheDebug) std::cout << ">>> Looks like the end of a weight group" << std::endl;
                                         if (!missed_weightgroup){
                                             break;
                                         } else missed_weightgroup=false;
                                     } else if (std::regex_search(lines[iLine], ismg26x ? weightgroupmg26x : weightgroup)) {
-                                        std::cout << "Pasa el tercero!" << std::endl;
                                         if (lheDebug) std::cout << ">>> Looks like the beginning of a new weight group, I will assume I missed the end of the group." << std::endl;
                                         if (ismg26x) missed_weightgroup=true;
                                         --iLine; // rewind by one, and go back to the outer loop
